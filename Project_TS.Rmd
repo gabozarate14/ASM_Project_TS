@@ -8,10 +8,169 @@ editor_options:
 ---
 
 
+# 1. Identification 
+
+Exploratory data analysis and transformation into stationarity
+
+## Import the data
+
 ```{r}
 serie=window(ts(read.table("metro.dat"),start=1996,freq=12))
+print(round(serie,0))
 plot(serie,main="Barcelona metro passengers",ylab="thousands of passengers")
 abline(v=1996:2020,lty=3,col=4)
 
 ```
+
+
+## Transformation into stationarity
+
+### Check if variance is constant
+
+```{r}
+m=apply(matrix(serie,nr=12),2,mean)
+v=apply(matrix(serie,nr=12),2,var)
+plot(m,v,xlab="Anual Means",ylab="Anual Variances",main="Metro Series")
+abline(lm(v~m),col=2,lty=3,lwd=2)
+boxplot(serie~floor(time(serie)))
+```
+
+The variance seems to be constant, but there are some cases that it changes a lot, so we apply the Box-Cox transformation to try to stabilize it, applying natural log
+
+```{r}
+lnserie=log(serie)
+plot(lnserie)
+m=apply(matrix(lnserie,nr=12),2,mean)
+v=apply(matrix(lnserie,nr=12),2,var)
+plot(m,v,xlab="Anual Means",ylab="Anual Variances",main="Metro Series")
+abline(lm(v~m),col=2,lty=3,lwd=2)
+boxplot(lnserie~floor(time(lnserie)))
+```
+
+Now it seems to have a more stable variance
+
+### Check if seasonality is observed/present
+
+```{r}
+plot(decompose(lnserie))
+monthplot(lnserie)
+ts.plot(matrix(lnserie,nrow=12))
+```
+
+
+It seems to be a seasonal pattern, that shows that during August the number of passengers significantly reduces, which makes sense because ot the time of the season. This because during summer people turns to travel more so there is less people in the city.
+
+So we eliminate the seasonality applying a seasonal difference $(1-B^{12})\log(X_t)$
+
+```{r}
+d12lnserie=diff(lnserie,12)
+plot(d12lnserie)
+abline(h=0)
+```
+
+### Check if the mean is constant
+
+Checking the plot done after the seasonal difference, it seems that the mean is not constant, so it is needed to apply a regular difference of order d=1 (1-B)
+
+```{r}
+d1d12lnserie=diff(d12lnserie,1)
+plot(d1d12lnserie)
+abline(h=0)
+abline(h=mean(d1d12lnserie),col=2,lwd=2)
+```
+
+After that, the mean seems to be constant and around 0, but despite that is decided to  try another regular difference and then by checking if the variance increases we will verify if it is needed or not.
+
+```{r}
+d1d1d12lnserie=diff(d1d12lnserie,1)
+plot(d1d1d12lnserie)
+abline(h=0)
+
+var(lnserie)
+var(d12lnserie)
+var(d1d12lnserie)
+var(d1d1d12lnserie)
+```
+
+
+The second regular difference is not needed because it is seen that the variance is artificially increased. So finally, stationarity is achieved by double differencing the log-transformed series (one regular and one seasonal difference). 
+
+Thus, $W_t=(1-B)(1-B^{12})\log X_t$ with seemingly zero mean.
+
+It can be concluded that the double differenced (d=1 and D=1) airbcn series (d1d12lnserie) is considered to be stationary: it has constant mean (seemingly=0), constant variance, and covariance structure only depending on the lags.
+
+# 2. Estimation
+
+## Model identification
+
+Since stationarity of the series d1d12lnserie was confirmed, we use the patterns observed on the P(ACF) to choose the posible ARIMA models.
+
+```{r}
+par(mfrow=c(1,2))
+acf(d1d12lnserie,ylim=c(-1,1),col=c(2,rep(1,11)),lwd=2,lag.max=72)
+pacf(d1d12lnserie,ylim=c(-1,1),col=c(rep(1,11),2),lwd=2,lag.max=72)
+par(mfrow=c(1,1))
+```
+
+Based on the patterns observed in the P(ACF), the identified feasible models for Wt are:
+- AR(2) and SAR(1)
+- 
+
+## Model fitting
+
+### AR(2) and SAR(1)
+
+First, fit the identified $ARIMA(2,0,0)(1,0,0)_{12}$  process to the stationary/transformed series Wt=d1d12lnserie
+
+#### Check/verify if the mean/intercept is truly null (non-statistically significant intercept)
+
+```{r}
+(mod=arima(d1d12lnserie,order=c(2,0,0),seasonal=list(order=c(1,0,0),period=12)))
+abs(mod$coef/sqrt(diag(mod$var.coef)))
+```
+
+Clearly, only the intercept (mean) is non significant.
+
+Thus, fit the non-stationary $ARIMA(2,1,0)(1,1,0)_{12}$ process to original log-transformed series: lnserie
+
+```{r}
+(mod=arima(lnserie,order=c(2,1,0),seasonal=list(order=c(1,1,0),period=12)))
+abs(mod$coef/sqrt(diag(mod$var.coef)))
+```
+
+We can see that:
+
+- All coeffs are non-zero (found statistically significant since |T-ratios| > 2).
+- AIC decreased when the intercept was dropped, so it is a  good decision to drop the intercept
+
+### MA(1) and SAR(1)
+
+First, fit the identified $ARIMA(0,0,1)(1,0,0)_{12}$  process to the stationary/transformed series Wt=d1d12lnserie
+
+#### Check/verify if the mean/intercept is truly null (non-statistically significant intercept)
+
+```{r}
+(mod=arima(d1d12lnserie,order=c(0,0,1),seasonal=list(order=c(1,0,0),period=12)))
+abs(mod$coef/sqrt(diag(mod$var.coef)))
+```
+
+Clearly, only the intercept (mean) is non significant.
+
+Thus, fit the non-stationary $ARIMA(0,1,1)(1,1,0)_{12}$  process to original log-transformed series: lnserie
+
+```{r}
+(mod=arima(lnserie,order=c(0,1,1),seasonal=list(order=c(1,1,0),period=12)))
+abs(mod$coef/sqrt(diag(mod$var.coef)))
+```
+
+Again it can be can see that:
+
+- All coeffs are non-zero (found statistically significant since |T-ratios| > 2).
+- AIC decreased when the intercept was dropped, so it is a  good decision to drop the intercept
+
+*To do: Provide the explicit statistical expression of the fitted ARIMA model; also report the estimated noise variance and AIC/BIC!*
+
+
+
+
 
