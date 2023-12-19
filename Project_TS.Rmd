@@ -1,0 +1,17 @@
+---
+title: "ASM - Project TS"
+author: "Gabriel Zarate"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+serie=window(ts(read.table("metro.dat"),start=1996,freq=12))
+plot(serie,main="Barcelona metro passengers",ylab="thousands of passengers")
+abline(v=1996:2020,lty=3,col=4)
+
+```
+
