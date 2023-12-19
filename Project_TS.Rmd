@@ -134,8 +134,8 @@ Clearly, only the intercept (mean) is non significant.
 Thus, fit the non-stationary $ARIMA(2,1,0)(1,1,0)_{12}$ process to original log-transformed series: lnserie
 
 ```{r}
-(mod=arima(lnserie,order=c(2,1,0),seasonal=list(order=c(1,1,0),period=12)))
-abs(mod$coef/sqrt(diag(mod$var.coef)))
+(mod1=arima(lnserie,order=c(2,1,0),seasonal=list(order=c(1,1,0),period=12)))
+abs(mod1$coef/sqrt(diag(mod1$var.coef)))
 ```
 
 We can see that:
@@ -159,8 +159,8 @@ Clearly, only the intercept (mean) is non significant.
 Thus, fit the non-stationary $ARIMA(0,1,1)(1,1,0)_{12}$  process to original log-transformed series: lnserie
 
 ```{r}
-(mod=arima(lnserie,order=c(0,1,1),seasonal=list(order=c(1,1,0),period=12)))
-abs(mod$coef/sqrt(diag(mod$var.coef)))
+(mod2=arima(lnserie,order=c(0,1,1),seasonal=list(order=c(1,1,0),period=12)))
+abs(mod2$coef/sqrt(diag(mod2$var.coef)))
 ```
 
 Again it can be can see that:
@@ -168,9 +168,578 @@ Again it can be can see that:
 - All coeffs are non-zero (found statistically significant since |T-ratios| > 2).
 - AIC decreased when the intercept was dropped, so it is a  good decision to drop the intercept
 
+So the final models that will be validated are:
+
+- mod1: $ARIMA(2,1,0)(1,1,0)_{12}$ process to original log-transformed series: lnserie
+- mod2: $ARIMA(0,1,1)(1,1,0)_{12}$  process to original log-transformed series: lnserie
+
+
 *To do: Provide the explicit statistical expression of the fitted ARIMA model; also report the estimated noise variance and AIC/BIC!*
 
+# 3. Validation
+
+#### ‘Load’ the ‘validation’ function: used later
+
+```{r}
+#################Validation#################################
+validation=function(model,dades){
+  s=frequency(get(model$series))
+  resid=model$residuals
+  par(mfrow=c(2,2),mar=c(3,3,3,3))
+  #Residuals plot
+  plot(resid,main="Residuals")
+  abline(h=0)
+  abline(h=c(-3*sd(resid),3*sd(resid)),lty=3,col=4)
+  #Square Root of absolute values of residuals (Homocedasticity)
+  scatter.smooth(sqrt(abs(resid)),main="Square Root of Absolute residuals",
+                 lpars=list(col=2))
+  
+  #Normal plot of residuals
+  qqnorm(resid)
+  qqline(resid,col=2,lwd=2)
+  
+  ##Histogram of residuals with normal curve
+  hist(resid,breaks=20,freq=FALSE)
+  curve(dnorm(x,mean=mean(resid),sd=sd(resid)),col=2,add=T)
+  
+  
+  #ACF & PACF of residuals
+  par(mfrow=c(1,2))
+  acf(resid,ylim=c(-1,1),lag.max=60,col=c(2,rep(1,s-1)),lwd=1)
+  pacf(resid,ylim=c(-1,1),lag.max=60,col=c(rep(1,s-1),2),lwd=1)
+  par(mfrow=c(1,1))
+  
+  #ACF & PACF of square residuals 
+  par(mfrow=c(1,2))
+  acf(resid^2,ylim=c(-1,1),lag.max=60,col=c(2,rep(1,s-1)),lwd=1)
+  pacf(resid^2,ylim=c(-1,1),lag.max=60,col=c(rep(1,s-1),2),lwd=1)
+  par(mfrow=c(1,1))
+  
+  #Ljung-Box p-values
+  par(mar=c(2,2,1,1))
+  tsdiag(model,gof.lag=7*s)
+  cat("\n--------------------------------------------------------------------\n")
+  print(model)
+  
+  #Stationary and Invertible
+  cat("\nModul of AR Characteristic polynomial Roots: ", 
+      Mod(polyroot(c(1,-model$model$phi))),"\n")
+  cat("\nModul of MA Characteristic polynomial Roots: ",
+      Mod(polyroot(c(1,model$model$theta))),"\n")
+  
+  suppressMessages(require(forecast,quietly=TRUE,warn.conflicts=FALSE))
+  plot(model)
+  
+  #Model expressed as an MA infinity (psi-weights)
+  psis=ARMAtoMA(ar=model$model$phi,ma=model$model$theta,lag.max=36)
+  names(psis)=paste("psi",1:36)
+  cat("\nPsi-weights (MA(inf))\n")
+  cat("\n--------------------\n")
+  print(psis[1:20])
+  
+  #Model expressed as an AR infinity (pi-weights)
+  pis=-ARMAtoMA(ar=-model$model$theta,ma=-model$model$phi,lag.max=36)
+  names(pis)=paste("pi",1:36)
+  cat("\nPi-weights (AR(inf))\n")
+  cat("\n--------------------\n")
+  print(pis[1:20])
+  
+  ## Add here complementary tests (use with caution!)
+  ##---------------------------------------------------------
+  cat("\nNormality Tests\n")
+  cat("\n--------------------\n")
+ 
+  ##Shapiro-Wilks Normality test
+  print(shapiro.test(resid(model)))
+
+  suppressMessages(require(nortest,quietly=TRUE,warn.conflicts=FALSE))
+  ##Anderson-Darling test
+  print(ad.test(resid(model)))
+  
+  suppressMessages(require(tseries,quietly=TRUE,warn.conflicts=FALSE))
+  ##Jarque-Bera test
+  print(jarque.bera.test(resid(model)))
+  
+  cat("\nHomoscedasticity Test\n")
+  cat("\n--------------------\n")
+  suppressMessages(require(lmtest,quietly=TRUE,warn.conflicts=FALSE))
+  ##Breusch-Pagan test
+  obs=get(model$series)
+  print(bptest(resid(model)~I(obs-resid(model))))
+  
+  cat("\nIndependence Tests\n")
+  cat("\n--------------------\n")
+  
+  ##Durbin-Watson test
+  print(dwtest(resid(model)~I(1:length(resid(model)))))
+  
+  ##Ljung-Box test
+  cat("\nLjung-Box test\n")
+  print(t(apply(matrix(c(1:4,(1:4)*s)),1,function(el) {
+    te=Box.test(resid(model),type="Ljung-Box",lag=el)
+    c(lag=(te$parameter),statistic=te$statistic[[1]],p.value=te$p.value)})))
+  
+
+  #Sample ACF vs. Teoric ACF
+  par(mfrow=c(2,2),mar=c(3,3,3,3))
+  acf(dades, ylim=c(-1,1) ,lag.max=36,main="Sample ACF")
+  
+  plot(ARMAacf(model$model$phi,model$model$theta,lag.max=36),ylim=c(-1,1), 
+       type="h",xlab="Lag",  ylab="", main="ACF Teoric")
+  abline(h=0)
+  
+  #Sample PACF vs. Teoric PACF
+  pacf(dades, ylim=c(-1,1) ,lag.max=36,main="Sample PACF")
+  
+  plot(ARMAacf(model$model$phi,model$model$theta,lag.max=36, pacf=T),ylim=c(-1,1),
+       type="h", xlab="Lag", ylab="", main="PACF Teoric")
+  abline(h=0)
+  par(mfrow=c(1,1))
+}
+################# Fi Validation #################################
+```
+
+## Model 1
+
+```{r}
+dades=d1d12lnserie #stationary transformed serie
+validation(mod1,dades)
+```
+
+### Analysis of Residuals
+
+*TO DO*
+
+### Check if the expressions are invertible / causal
+
+*TO DO*
+
+### Stability check
+
+```{r}
+ultim=c(2018,12)
+pdq=c(2,1,0)
+PDQ=c(1,1,0)
+
+serie1=window(serie,end=ultim+c(1,0))
+lnserie1=log(serie1)
+serie2=window(serie,end=ultim)
+lnserie2=log(serie2)
+
+(mod11=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+
+(mod12=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+```
+
+The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
+
+### Capability of prediction
+
+We use the subset series lnserie2 to predict 2019 data
+
+```{r}
+pred=predict(mod12,n.ahead=12)
+pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
+
+se<-ts(c(0,pred$se),start=ultim,freq=12)
+
+#Intervals
+tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
+tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
+pr<-ts(exp(pr),start=ultim,freq=12)
+
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(2,1,0)(1,1,0)12")
+abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
+
+#Tabulate values of: point and interval predictions, observations and prediction-errors.
+(previs=window(cbind(tl,pr,tu,serie,error=round(serie-pr,3)),start=ultim))
+
+#Also, compute and report predictive ability measures: RMSPE and MAPE
+
+obs=window(serie,start=ultim)
+mod12.RMSE=sqrt(sum((obs-pr)^2)/12)
+mod12.MAE=sum(abs(obs-pr))/12
+mod12.RMSPE=sqrt(sum(((obs-pr)/obs)^2)/12)
+mod12.MAPE=sum(abs(obs-pr)/obs)/12
+
+data.frame("RMSE"=mod12.RMSE,"MAE"=mod12.MAE,"RMSPE"=mod12.RMSPE,"MAPE"=mod12.MAPE)
+mCI12=mean(tu-tl)
+
+cat("\nMean Length CI: ",mCI12)
+```
 
 
+## Model 2
 
+```{r}
+validation(mod2,dades)
+```
+
+### Analysis of Residuals
+
+*TO DO*
+
+### Check if the expressions are invertible / causal
+
+*TO DO*
+
+### Stability check
+
+```{r}
+ultim=c(2018,12)
+pdq=c(0,1,1)
+PDQ=c(1,1,0)
+
+serie1=window(serie,end=ultim+c(1,0))
+lnserie1=log(serie1)
+serie2=window(serie,end=ultim)
+lnserie2=log(serie2)
+
+(mod21=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+
+(mod22=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+```
+
+The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
+
+### Capability of prediction
+
+We use the subset series lnserie2 to predict 2019 data
+
+```{r}
+pred=predict(mod22,n.ahead=12)
+pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
+
+se<-ts(c(0,pred$se),start=ultim,freq=12)
+
+#Intervals
+tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
+tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
+pr<-ts(exp(pr),start=ultim,freq=12)
+
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(0,1,1)(1,1,0)12")
+abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
+
+#Tabulate values of: point and interval predictions, observations and prediction-errors.
+(previs=window(cbind(tl,pr,tu,serie,error=round(serie-pr,3)),start=ultim))
+
+#Also, compute and report predictive ability measures: RMSPE and MAPE
+
+obs=window(serie,start=ultim)
+mod22.RMSE=sqrt(sum((obs-pr)^2)/12)
+mod22.MAE=sum(abs(obs-pr))/12
+mod22.RMSPE=sqrt(sum(((obs-pr)/obs)^2)/12)
+mod22.MAPE=sum(abs(obs-pr)/obs)/12
+
+data.frame("RMSE"=mod22.RMSE,"MAE"=mod22.MAE,"RMSPE"=mod22.RMSPE,"MAPE"=mod22.MAPE)
+mCI2=mean(tu-tl)
+
+cat("\nMean Length CI: ",mCI2)
+```
+
+## Best model selection
+
+```{r}
+results=data.frame(
+  par=c(length(coef(mod12)),length(coef(mod22))),
+  Sigma2Z=c(mod12$sigma2,mod22$sigma2),
+  AIC=c(AIC(mod12),AIC(mod22)),
+  BIC=c(BIC(mod12),BIC(mod22)),
+   RMSE=c(mod12.RMSE,mod22.RMSE),
+  MAE=c(mod12.MAE,mod22.MAE),
+  RMSPE=c(mod12.RMSPE,mod22.RMSPE),
+  MAPE=c(mod12.MAPE,mod22.MAPE),
+  meanLength=c(mCI1,mCI2)
+  )
+
+row.names(results)=c("ARIMA(2,1,0)(1,1,0)12","ARIMA(0,1,1)(1,1,0)12")
+results
+```
+
+From the results, it can be seen that model 2, despite having an higher AIC (but for a little), has a better prediction capability, because focusing on the error metric, it has less predictive error.
+
+# 4. Prediction
+
+## Perform long term predictions
+Predict values for 2020 based on the complete series lnserie1 (from 1990-2019).
+
+```{r}
+pred=predict(mod22,n.ahead=12)
+pr<-ts(c(tail(lnserie,1),pred$pred),start=ultim+c(1,0),freq=12)
+se<-ts(c(0,pred$se),start=ultim+c(1,0),freq=12)
+
+#Intervals
+tl1<-ts(exp(pr-1.96*se),start=ultim+c(1,0),freq=12)
+tu1<-ts(exp(pr+1.96*se),start=ultim+c(1,0),freq=12)
+pr1<-ts(exp(pr),start=ultim+c(1,0),freq=12)
+
+ts.plot(serie,tl1,tu1,pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(ultim[1]-2,ultim[1]+3),type="o",main="Model ARIMA(0,1,1)(1,0,0)12")
+abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
+
+(previs1=window(cbind(tl1,pr1,tu1),start=ultim+c(1,0)))
+```
+
+
+# 5. Outlier Treatment
+
+## Calendar effect impact? (haven't been seen)
+
+*Decide if we do it or not*
+
+## Outliers automatic detection and its treatment
+
+```{r}
+########## Atípics (Outliers) ###############################################
+source("atipics2.r")
+```
+
+
+### Realize an automatic detection of outliers based on the previously fitted $ARIMA(0,1,1)(1,1,0)_{12}$
+
+```{r}
+##Detection of outliers: In this case, we have applied a regular and a seasonal differentiation of order $S=12$. We set the criterion to $crit = 2.8$ and also the argument LS to TRUE.
+## The crit value chosen by the researcher is typically fixed around 3; the LS argument is optional (= TRUE if one aims to detect a level shift)
+
+mod.atip=outdetec(mod22,dif=c(1,12),crit=2.8,LS=T) # automatic detection of outliers with crit=2.8 and LS =TRUE
+
+#Estimated residual variance after outliers detection and treatment
+mod.atip$sigma
+```
+
+### Table with detected outliers, their types, magnitud, statistic values and chronology and percentage of variation (relative since in log scale)
+
+```{r}
+atipics=mod.atip$atip[order(mod.atip$atip[,1]),]
+meses=c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic")
+
+data.frame(atipics,Fecha=paste(meses[(atipics[,1]-1)%%12+1],start(lnserie)[1]+((atipics[,1]-1)%/%12)),perc.Obs=exp(atipics[,3])*100)
+```
+
+#### Interpretation
+
+*TO DO*
+
+### Plot together (in original scale) the observed and the linearized series (without outliers)
+
+```{r}
+lnserie.lin=lineal(lnserie,mod.atip$atip)
+serie.lin=exp(lnserie.lin)
+
+plot(serie)
+lines(serie.lin,col=2)
+```
+
+### Profile of outliers effect: plot of the outliers effect in the log-transformed series
+
+```{r}
+plot(lnserie-lnserie.lin)
+```
+
+It seems to be cases of presence of the three different types of outliers
+
+## Identification and Estimation based on the Linearized Series
+
+```{r}
+d1d12lnserie.lin=diff(diff(lnserie.lin,12))
+par(mfrow=c(1,2))
+acf(d1d12lnserie.lin,ylim=c(-1,1),lag.max=72,col=c(2,rep(1,11)),lwd=2)
+pacf(d1d12lnserie.lin,ylim=c(-1,1),lag.max=72,col=c(rep(1,11),2),lwd=2)
+par(mfrow=c(1,1))
+```
+
+It can be seen that the seasonal part changes from the previously detected. And the feasible models now are:
+
+- mod3: $ARIMA(2,1,0)(0,1,1)_{12}$
+- mod4: $ARIMA(0,1,1)(0,1,1)_{12}$
+
+## Model 3 (With no outliers)
+
+```{r}
+(mod3=arima(lnserie,order=c(2,1,0), seasonal=list(order=c(0,1,1),period=12)))
+abs(mod3$coef/sqrt(diag(mod3$var.coef)))
+```
+
+
+```{r}
+validation(mod3,dades)
+```
+
+### Analysis of Residuals
+
+*TO DO*
+
+### Check if the expressions are invertible / causal
+
+*TO DO*
+
+### Stability check
+
+```{r}
+ultim=c(2018,12)
+pdq=c(2,1,0)
+PDQ=c(0,1,1)
+
+serie1=window(serie,end=ultim+c(1,0))
+lnserie1=log(serie1)
+serie2=window(serie,end=ultim)
+lnserie2=log(serie2)
+
+(mod31=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+
+(mod32=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+```
+
+The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
+
+### Capability of prediction
+
+We use the subset series lnserie2 to predict 2019 data
+
+```{r}
+pred=predict(mod32,n.ahead=12)
+pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
+
+se<-ts(c(0,pred$se),start=ultim,freq=12)
+
+#Intervals
+tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
+tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
+pr<-ts(exp(pr),start=ultim,freq=12)
+
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(2,1,0)(0,1,1)12+Outliers")
+abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
+
+#Tabulate values of: point and interval predictions, observations and prediction-errors.
+(previs=window(cbind(tl,pr,tu,serie,error=round(serie-pr,3)),start=ultim))
+
+#Also, compute and report predictive ability measures: RMSPE and MAPE
+
+obs=window(serie,start=ultim)
+mod32.RMSE=sqrt(sum((obs-pr)^2)/12)
+mod32.MAE=sum(abs(obs-pr))/12
+mod32.RMSPE=sqrt(sum(((obs-pr)/obs)^2)/12)
+mod32.MAPE=sum(abs(obs-pr)/obs)/12
+
+data.frame("RMSE"=mod32.RMSE,"MAE"=mod32.MAE,"RMSPE"=mod32.RMSPE,"MAPE"=mod32.MAPE)
+mCI3=mean(tu-tl)
+
+cat("\nMean Length CI: ",mCI3)
+```
+
+## Model 4 (With no outliers)
+
+```{r}
+(mod4=arima(lnserie,order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12)))
+abs(mod4$coef/sqrt(diag(mod4$var.coef)))
+```
+
+
+```{r}
+validation(mod4,dades)
+```
+
+### Analysis of Residuals
+
+*TO DO*
+
+### Check if the expressions are invertible / causal
+
+*TO DO*
+
+### Stability check
+
+```{r}
+ultim=c(2018,12)
+pdq=c(0,1,1)
+PDQ=c(0,1,1)
+
+serie1=window(serie,end=ultim+c(1,0))
+lnserie1=log(serie1)
+serie2=window(serie,end=ultim)
+lnserie2=log(serie2)
+
+(mod41=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+
+(mod42=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+```
+
+The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
+
+### Capability of prediction
+
+We use the subset series lnserie2 to predict 2019 data
+
+```{r}
+pred=predict(mod42,n.ahead=12)
+pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
+
+se<-ts(c(0,pred$se),start=ultim,freq=12)
+
+#Intervals
+tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
+tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
+pr<-ts(exp(pr),start=ultim,freq=12)
+
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers")
+abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
+
+#Tabulate values of: point and interval predictions, observations and prediction-errors.
+(previs=window(cbind(tl,pr,tu,serie,error=round(serie-pr,3)),start=ultim))
+
+#Also, compute and report predictive ability measures: RMSPE and MAPE
+
+obs=window(serie,start=ultim)
+mod42.RMSE=sqrt(sum((obs-pr)^2)/12)
+mod42.MAE=sum(abs(obs-pr))/12
+mod42.RMSPE=sqrt(sum(((obs-pr)/obs)^2)/12)
+mod42.MAPE=sum(abs(obs-pr)/obs)/12
+
+data.frame("RMSE"=mod42.RMSE,"MAE"=mod42.MAE,"RMSPE"=mod42.RMSPE,"MAPE"=mod42.MAPE)
+mCI4=mean(tu-tl)
+
+cat("\nMean Length CI: ",mCI3)
+```
+
+
+## Best model selection
+
+```{r}
+results=data.frame(
+  par=c(length(coef(mod22)),length(coef(mod32)),length(coef(mod42))),
+  Sigma2Z=c(mod22$sigma2,mod32$sigma2,mod42$sigma2),
+  AIC=c(AIC(mod22),AIC(mod32),AIC(mod42)),
+  BIC=c(BIC(mod22),BIC(mod32),BIC(mod42)),
+   RMSE=c(mod22.RMSE,mod32.RMSE,mod42.RMSE),
+  MAE=c(mod22.MAE,mod32.MAE,mod42.MAE),
+  RMSPE=c(mod22.RMSPE,mod32.RMSPE,mod42.RMSPE),
+  MAPE=c(mod22.MAPE,mod32.MAPE,mod42.MAPE),
+  meanLength=c(mCI2,mCI3,mCI4)
+  )
+
+row.names(results)=c("ARIMA(0,1,1)(1,1,0)12", "ARIMA(2,1,0)(0,1,1)12+Outliers",  "ARIMA(0,1,1)(0,1,1)12+Outliers")
+results
+```
+
+From the results, it can be seen that model 4 has a better prediction capability, because focusing on the error metric, it has less predictive error, and also it has one of the lowest AIC, and additionally the model has the smallest confidence bounds lenght.
+
+## Final Prediction
+
+## Perform long term predictions with the best model (mod4)
+Predict values for 2020 based on the complete series lnserie1 (from 1990-2019).
+
+```{r}
+pred=predict(mod42,n.ahead=12)
+pr<-ts(c(tail(lnserie,1),pred$pred),start=ultim+c(1,0),freq=12)
+se<-ts(c(0,pred$se),start=ultim+c(1,0),freq=12)
+
+#Intervals
+tl1<-ts(exp(pr-1.96*se),start=ultim+c(1,0),freq=12)
+tu1<-ts(exp(pr+1.96*se),start=ultim+c(1,0),freq=12)
+pr1<-ts(exp(pr),start=ultim+c(1,0),freq=12)
+
+ts.plot(serie,tl1,tu1,pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(ultim[1]-2,ultim[1]+3),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers")
+abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
+
+(previs1=window(cbind(tl1,pr1,tu1),start=ultim+c(1,0)))
+```
 
