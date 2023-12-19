@@ -363,9 +363,9 @@ mod12.RMSPE=sqrt(sum(((obs-pr)/obs)^2)/12)
 mod12.MAPE=sum(abs(obs-pr)/obs)/12
 
 data.frame("RMSE"=mod12.RMSE,"MAE"=mod12.MAE,"RMSPE"=mod12.RMSPE,"MAPE"=mod12.MAPE)
-mCI12=mean(tu-tl)
+mCI1=mean(tu-tl)
 
-cat("\nMean Length CI: ",mCI12)
+cat("\nMean Length CI: ",mCI1)
 ```
 
 
@@ -733,13 +733,22 @@ pr<-ts(c(tail(lnserie,1),pred$pred),start=ultim+c(1,0),freq=12)
 se<-ts(c(0,pred$se),start=ultim+c(1,0),freq=12)
 
 #Intervals
-tl1<-ts(exp(pr-1.96*se),start=ultim+c(1,0),freq=12)
-tu1<-ts(exp(pr+1.96*se),start=ultim+c(1,0),freq=12)
-pr1<-ts(exp(pr),start=ultim+c(1,0),freq=12)
+tl2<-ts(exp(pr-1.96*se),start=ultim+c(1,0),freq=12)
+tu2<-ts(exp(pr+1.96*se),start=ultim+c(1,0),freq=12)
+pr2<-ts(exp(pr),start=ultim+c(1,0),freq=12)
 
 ts.plot(serie,tl1,tu1,pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(ultim[1]-2,ultim[1]+3),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers")
 abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
 
-(previs1=window(cbind(tl1,pr1,tu1),start=ultim+c(1,0)))
+(previs2=window(cbind(tl2,pr2,tu2),start=ultim+c(1,0)))
+```
+
+
+```{r}
+ts.plot(serie,tl1,tu1,pr1,tl2,tu2,pr2,lty=c(1,2,2,1,2,2,1),col=c(1,4,4,2,3,3,6),xlim=ultim[1]+c(1,3),type="o",main="Metro")
+legend("topleft",c("ARIMA(0,1,1)(1,1,0)12","ARIMA(0,1,1)(0,1,1)12+Outliers"),col=c(4,3),lty=1,lwd=2)
+abline(v=ultim[1]+1:3,lty=3,col=4)
+
+cbind(previs1,previs2)
 ```
 
