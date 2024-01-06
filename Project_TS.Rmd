@@ -1,6 +1,6 @@
 ---
 title: "ASM - Project TS"
-author: "Gabriel Zarate"
+author: "Gabriel Zarate & Antonio Pariente"
 date: "`r Sys.Date()`"
 output: html_document
 editor_options: 
@@ -298,18 +298,19 @@ validation=function(model,dades){
 
 ## Model 1
 
+### Analysis of Residuals
+
 ```{r}
 dades=d1d12lnserie #stationary transformed serie
 validation(mod1,dades)
 ```
 
-### Analysis of Residuals
+The normality plots in residuals present unsatisfactory results. Altogether, the Saphiro-Wilk Test allows rejecting Normality with 0.05 confidence level. The deviation from normality is observed to be more common in the tails. The Ljung statistic also presents visible deviation in some point of the plot and the variance can be said to be non constant. This model does not present a truthful behavior of residuals.
 
-*TO DO*
 
 ### Check if the expressions are invertible / causal
 
-*TO DO*
+Regarding Causality, since we are dealing with an AR model and all the roots of the model lie outside the unit circle (inverse ones lie inside), we can say that the series is causal and stationary, and therefore invertible. This is reflected in the plot of its inverse AR roots.
 
 ### Stability check
 
@@ -367,17 +368,19 @@ cat("\nMean Length CI: ",mCI1)
 
 ## Model 2
 
+### Analysis of Residuals
+
 ```{r}
 validation(mod2,dades)
 ```
 
-### Analysis of Residuals
+When looking at the normality plots or the residuals, they present bad alignments in the tails. The square roots of their absolute values, do not present a constant variance at first, but the Homoscedasticity test does not allow to confirm this with enough confidence. The Saphiro-Wilk Test also allows the rejection of the null hypothesis of normality with 0.05 confidence level.
 
-*TO DO*
+Despite of these results, the ACF function and the Ljung-Box statistic pllot do not present an alarming behavior. These observations shall be taken into account when choosing the best model and using it.
 
 ### Check if the expressions are invertible / causal
 
-*TO DO*
+By taking a look at the plot of the inverse AR and MA roots, it can be observed that none of the inverse roots lie outside the unit circle for both parts. This is an indicator that the series are stationary, causal and therefore invertible.
 
 ### Stability check
 
@@ -476,11 +479,8 @@ abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
 (previs1=window(cbind(tl1,pr1,tu1),start=ultim+c(1,0)))
 ```
 
-# 5. Outlier Treatment
+# 5. Outlier Treatment & Calendar effects
 
-## Calendar effect impact? (haven't been seen)
-
-*Decide if we do it or not*
 
 ## Outliers automatic detection and its treatment
 
@@ -549,12 +549,33 @@ It can be seen that the seasonal part changes from the previously detected. And 
 -   mod3: $ARIMA(2,1,0)(0,1,1)_{12}$
 -   mod4: $ARIMA(0,1,1)(0,1,1)_{12}$
 
-## Model 3 (With no outliers)
+## Model 3 (With no outliers and calendar effects)
 
 ```{r}
-(mod3=arima(lnserie.lin,order=c(2,1,0), seasonal=list(order=c(0,1,1),period=12)))
+source("CalendarEffects.r")
+data=c(start(lnserie)[1],start(lnserie)[2], length(lnserie))
+(wTradDays=Wtrad(data))
+(wEast=Weaster(data))
+
+T1=ts(rep(0,length(lnserie)),start=1996,freq=12)
+T1[235:length(lnserie)]=1
+
+(mod3=arima(lnserie.lin,order=c(2,1,0), seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
 abs(mod3$coef/sqrt(diag(mod3$var.coef)))
 ```
+
+## Calendar Effects
+
+In the below graphics, the calendar effects are plotted. Since coefficients of these two factors are similar in model 3 and model 4, the graphs do not present visible differences. In both cases, coefficients regarding Calendar Effects can be considered low, specially for Easter.
+
+```{r}
+EfecTD=coef(mod3)["wTradDays"]*wTradDays
+EfecSS=coef(mod3)["wEast"]*wEast
+lnserieEC.lin=lnserie.lin-EfecTD-EfecSS
+plot(lnserie-lnserieEC.lin)
+```
+
+### Analysis of Residuals
 
 ```{r}
 dades=d1d12lnserie.lin  #stationary
@@ -562,13 +583,14 @@ model=mod3  #Fitted ARIMA model to the log-linearized series
 validation(model,dades)
 ```
 
-### Analysis of Residuals
 
-*TO DO*
+By looking at the corresponding graphic of residuals and their squared root residuals, we can consider it to have a more less constant variance. Although there are some exceptions, they can be considered minimal. When we pay attention to the Normal QQ plot, it becomes visible that the residuals do mostly align with the normal distribution. This fact is confirmed by the Saphiro-Wilk Test, which provides a p-value that does not allow the rejection of normality.
+
+Regarding the p-values of the Ljung-Box. they do not offer a satisfactory plot. However, by taking into account the previous observations about residuals and the ACF the final decision was to take them as valid results.
 
 ### Check if the expressions are invertible / causal
 
-*TO DO*
+The plot of the inverse roots for AR and MA, indicates that the series are stationary and causal, since none of the inverses lie outside the unit circle. The invertibility is also fulfilled.
 
 ### Stability check
 
@@ -582,9 +604,14 @@ lnserie1=log(serie1)
 serie2=window(serie.lin,end=ultim)
 lnserie2=log(serie2)
 
-(mod31=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
 
-(mod32=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+wTradDays2=window(wTradDays,end=ultim)
+wEast2=window(wEast,end=ultim)
+
+
+(mod31=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12),xreg=data.frame(wTradDays,wEast)))
+
+(mod32=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12), xreg=data.frame(wTradDays2,wEast2)))
 ```
 
 The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
@@ -594,7 +621,7 @@ The model stability is fulfilled. We observe similar results in terms of signifi
 We use the subset series lnserie2 to predict 2019 data
 
 ```{r}
-pred=predict(mod32,n.ahead=12)
+pred=predict(mod32,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
 pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
 
 se<-ts(c(0,pred$se),start=ultim,freq=12)
@@ -604,7 +631,7 @@ tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
 tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
 pr<-ts(exp(pr),start=ultim,freq=12)
 
-ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(2,1,0)(0,1,1)12+Outliers")
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(2,1,0)(0,1,1)12+Outliers+CalendarEffects")
 abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
 
 #Tabulate values of: point and interval predictions, observations and prediction-errors.
@@ -627,9 +654,20 @@ cat("\nMean Length CI: ",mCI3)
 ## Model 4 (With no outliers)
 
 ```{r}
-(mod4=arima(lnserie.lin,order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12)))
+(mod4=arima(lnserie.lin,order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
 abs(mod4$coef/sqrt(diag(mod4$var.coef)))
 ```
+
+## Calendar Effects
+In the below graphics, the calendar effects are plotted. It can be clearly seen that some months were indeed affected by this phenomena. The years showing calendar effect peaks were 2000, 2004, 2007 and 2009. This means that they suffered from unproportioned Trading or Easter days which by taking into account the coefficient from Arima, indeed affected the time series values.
+```{r}
+EfecTD=coef(mod4)["wTradDays"]*wTradDays
+EfecSS=coef(mod4)["wEast"]*wEast
+lnserieEC.lin=lnserie.lin-EfecTD-EfecSS
+plot(lnserie-lnserieEC.lin)
+```
+
+### Analysis of Residuals
 
 ```{r}
 dades=d1d12lnserie.lin  #stationary
@@ -637,13 +675,12 @@ model=mod4  #Fitted ARIMA model to the log-linearized series
 validation(model,dades)
 ```
 
-### Analysis of Residuals
+Model 4 presents very similar results to the ones obtained for Model3 regarding normality of residuals, with the exception of the Saphiro-Wilk test, that allows us to reject the hypothesis of normality with a 0.05 level of confidence. The Ljung-Box statistic also presents much worse results than in the previous model. These results will be considered when comparing which is the best model, since we are interested, not only in a precision, but also in the fullfilment of the normality in residuals which is an indicator of the quality or truthfulness of the model.
 
-*TO DO*
 
 ### Check if the expressions are invertible / causal
 
-*TO DO*
+It can be observed that the MA inverse roots lie inside the unit circle. This makes the model convertible, since we are dealing with an MA model, it has to be taken into account that they are always stationary.
 
 ### Stability check
 
@@ -657,9 +694,9 @@ lnserie1=log(serie1)
 serie2=window(serie.lin,end=ultim)
 lnserie2=log(serie2)
 
-(mod41=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+(mod41=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12),xreg=data.frame(wTradDays,wEast)))
 
-(mod42=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+(mod42=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12),xreg=data.frame(wTradDays2,wEast2)))
 ```
 
 The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
@@ -669,7 +706,7 @@ The model stability is fulfilled. We observe similar results in terms of signifi
 We use the subset series lnserie2 to predict 2019 data
 
 ```{r}
-pred=predict(mod42,n.ahead=12)
+pred=predict(mod42,n.ahead=12,newxreg=window(cbind(wTradDays,wEast)))
 pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
 
 se<-ts(c(0,pred$se),start=ultim,freq=12)
@@ -679,7 +716,7 @@ tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
 tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
 pr<-ts(exp(pr),start=ultim,freq=12)
 
-ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers")
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers+CalendarEffects")
 abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
 
 #Tabulate values of: point and interval predictions, observations and prediction-errors.
@@ -714,7 +751,7 @@ results=data.frame(
   meanLength=c(mCI2,mCI3,mCI4)
   )
 
-row.names(results)=c("ARIMA(0,1,1)(1,1,0)12", "ARIMA(2,1,0)(0,1,1)12+Outliers",  "ARIMA(0,1,1)(0,1,1)12+Outliers")
+row.names(results)=c("ARIMA(0,1,1)(1,1,0)12", "ARIMA(2,1,0)(0,1,1)12+Outliers+CalendarEffects",  "ARIMA(0,1,1)(0,1,1)12+Outliers+CalendarEffects")
 results
 ```
 
