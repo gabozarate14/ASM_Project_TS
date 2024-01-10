@@ -473,41 +473,13 @@ tl1<-ts(exp(pr-1.96*se),start=ultim+c(1,0),freq=12)
 tu1<-ts(exp(pr+1.96*se),start=ultim+c(1,0),freq=12)
 pr1<-ts(exp(pr),start=ultim+c(1,0),freq=12)
 
-ts.plot(serie,tl1,tu1,pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(ultim[1]-2,ultim[1]+3),type="o",main="Model ARIMA(0,1,1)(1,1,0)12")
+ts.plot(serie,tl1,tu1,pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(ultim[1]-2,ultim[1]+3),type="o",main="Model ARIMA(0,1,1)(1,0,0)12")
 abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
 
 (previs1=window(cbind(tl1,pr1,tu1),start=ultim+c(1,0)))
 ```
 
-# 5. Calendar effects & Outlier Treatment 
-
-## Calendar effects
-
-```{r}
-source("CalendarEffects.r")
-```
-
-```{r}
-data=c(start(lnserie)[1],start(lnserie)[2], length(lnserie))
-(wTradDays=Wtrad(data))
-(wEast=Weaster(data))
-
-T1=ts(rep(0,length(lnserie)),start=1996,freq=12)
-T1[235:length(lnserie)]=1
-```
-
-```{r}
-(modEC=arima(lnserie,order=c(0,1,1), seasonal=list(order=c(1,1,0),period=12),xreg=data.frame(wTradDays,wEast)))
-abs(modEC$coef/sqrt(diag(modEC$var.coef)))
-```
-
-
-```{r}
-EfecTD=coef(modEC)["wTradDays"]*wTradDays
-EfecSS=coef(modEC)["wEast"]*wEast
-lnserieEC=lnserie-EfecTD-EfecSS
-plot(lnserie-lnserieEC)
-```
+# 5. Outlier Treatment & Calendar effects
 
 
 ## Outliers automatic detection and its treatment
@@ -523,7 +495,7 @@ source("atipics2.r")
 ##Detection of outliers: In this case, we have applied a regular and a seasonal differentiation of order $S=12$. We set the criterion to $crit = 2.8$ and also the argument LS to TRUE.
 ## The crit value chosen by the researcher is typically fixed around 3; the LS argument is optional (= TRUE if one aims to detect a level shift)
 
-mod.atip=outdetec(modEC,dif=c(1,12),crit=2.75,LS=T) # automatic detection of outliers with crit=2.8 and LS =TRUE
+mod.atip=outdetec(mod22,dif=c(1,12),crit=2.8,LS=T) # automatic detection of outliers with crit=2.8 and LS =TRUE
 
 #Estimated residual variance after outliers detection and treatment
 mod.atip$sigma
@@ -540,22 +512,16 @@ data.frame(atipics,Fecha=paste(meses[(atipics[,1]-1)%%12+1],start(lnserie)[1]+((
 
 ##### Interpretation
 
-A small research was conducted to try to interpret some of the values detected as outliers, and the result was not satisfying, because no specific major event that stands out in public records for it corresponding dates. Only one possible phenomenon was found: The observations 7, 6, 12 and 8 occur on the summer (June, July and August) of different years but are additive outliers (AO), whose effect is only noticed at those specific date, and can be directly related to the local people traveling during this season. And this is reflected on the its W_Coeff, which is -0.06 approximately for all this observations, after applying the requires exponential transformation, it is obtained that it is 6% lower than the usual value for that month.
+A small research was conducted to try to interpret some of the dates with values detected as outliers, and the result was not satisfying, because no specific major event that stands out in public records for this dates. Only one possible phenomenon was found: The observations 40, 112 and 140 occur on April of different years but are additive outliers (AO), whose effect is only noticed at those specific date, and can be directly related to this months usually falling into the tourist seasons. And this is reflected on the its W_Coeff, which is 0.12 approximately for this observations, after applying the requires exponential transformation, it is obtained that is is 12.7% higher than the usual value for that month.
 
 #### Comparing observed series with linearized (without outliers) series
+
+Plot together (in original scale) the observed and the linearized series (without outliers)
 
 ```{r}
 lnserie.lin=lineal(lnserie,mod.atip$atip)
 serie.lin=exp(lnserie.lin)
 
-(modEC.lin=arima(lnserie.lin,order=c(0,1,1),seasonal=list(order=c(1,1,0),period=12),xreg=data.frame(wTradDays,wEast)))
-abs(modEC.lin$coef/sqrt(diag(modEC.lin$var.coef)))
-```
-
-
-Plot together (in original scale) the observed and the linearized series (without outliers)
-
-```{r}
 plot(serie)
 lines(serie.lin,col=2)
 ```
@@ -563,42 +529,51 @@ lines(serie.lin,col=2)
 #### Profile of outliers effect: plot of the outliers effect in the log-transformed series
 
 ```{r}
-EfecTD=coef(modEC.lin)["wTradDays"]*wTradDays
-EfecSS=coef(modEC.lin)["wEast"]*wEast
-lnserieEC.lin=lnserie.lin-EfecTD-EfecSS
-plot(lnserie-lnserieEC.lin)
+plot(lnserie-lnserie.lin)
 ```
 
+It can clearly be seen that there is presence of the three different types of outliers.
 
 ## Identification and Estimation based on the Linearized Series
 
 ```{r}
-d1d12lnserie.lin=diff(diff(lnserieEC.lin,12))
+d1d12lnserie.lin=diff(diff(lnserie.lin,12))
 par(mfrow=c(1,2))
 acf(d1d12lnserie.lin,ylim=c(-1,1),lag.max=72,col=c(2,rep(1,11)),lwd=2)
 pacf(d1d12lnserie.lin,ylim=c(-1,1),lag.max=72,col=c(rep(1,11),2),lwd=2)
 par(mfrow=c(1,1))
 ```
 
-The feasible models are the same as before:
+It can be seen that the seasonal part changes from the previously detected. And the feasible models now are:
 
--   mod3: $ARIMA(2,1,0)(1,1,0)_{12}$
--   mod4: $ARIMA(0,1,1)(1,1,0)_{12}$
+-   mod3: $ARIMA(2,1,0)(0,1,1)_{12}$
+-   mod4: $ARIMA(0,1,1)(0,1,1)_{12}$
 
 ## Model 3 (With no outliers and calendar effects)
 
 ```{r}
-(mod3=arima(lnserieEC.lin,order=c(2,1,0), seasonal=list(order=c(1,1,0),period=12),xreg=data.frame(wTradDays,wEast)))
+source("CalendarEffects.r")
+data=c(start(lnserie)[1],start(lnserie)[2], length(lnserie))
+(wTradDays=Wtrad(data))
+(wEast=Weaster(data))
+
+T1=ts(rep(0,length(lnserie)),start=1996,freq=12)
+T1[235:length(lnserie)]=1
+
+(mod3=arima(lnserie.lin,order=c(2,1,0), seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
 abs(mod3$coef/sqrt(diag(mod3$var.coef)))
 ```
 
-It can be seen that the calendar effect terms are not significant,so these are dropped and the model work without them over the new linearized data.
+## Calendar Effects
+
+In the below graphics, the calendar effects are plotted. Since coefficients of these two factors are similar in model 3 and model 4, the graphs do not present visible differences. In both cases, coefficients regarding Calendar Effects can be considered low, specially for Easter.
 
 ```{r}
-(mod3=arima(lnserieEC.lin,order=c(2,1,0), seasonal=list(order=c(1,1,0),period=12)))
-abs(mod3$coef/sqrt(diag(mod3$var.coef)))
+EfecTD=coef(mod3)["wTradDays"]*wTradDays
+EfecSS=coef(mod3)["wEast"]*wEast
+lnserieEC.lin=lnserie.lin-EfecTD-EfecSS
+plot(lnserie-lnserieEC.lin)
 ```
-
 
 ### Analysis of Residuals
 
@@ -622,7 +597,7 @@ The plot of the inverse roots for AR and MA, indicates that the series are stati
 ```{r}
 ultim=c(2018,12)
 pdq=c(2,1,0)
-PDQ=c(1,1,0)
+PDQ=c(0,1,1)
 
 serie1=window(serie.lin,end=ultim+c(1,0))
 lnserie1=log(serie1)
@@ -634,9 +609,9 @@ wTradDays2=window(wTradDays,end=ultim)
 wEast2=window(wEast,end=ultim)
 
 
-(mod31=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+(mod31=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12),xreg=data.frame(wTradDays,wEast)))
 
-(mod32=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+(mod32=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12), xreg=data.frame(wTradDays2,wEast2)))
 ```
 
 The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
@@ -646,7 +621,7 @@ The model stability is fulfilled. We observe similar results in terms of signifi
 We use the subset series lnserie2 to predict 2019 data
 
 ```{r}
-pred=predict(mod32,n.ahead=12)
+pred=predict(mod32,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
 pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
 
 se<-ts(c(0,pred$se),start=ultim,freq=12)
@@ -656,7 +631,7 @@ tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
 tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
 pr<-ts(exp(pr),start=ultim,freq=12)
 
-ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(2,1,0)(1,1,0)12+Outliers+CalendarEffects")
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(2,1,0)(0,1,1)12+Outliers+CalendarEffects")
 abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
 
 #Tabulate values of: point and interval predictions, observations and prediction-errors.
@@ -679,17 +654,18 @@ cat("\nMean Length CI: ",mCI3)
 ## Model 4 (With no outliers)
 
 ```{r}
-(mod4=arima(lnserieEC.lin,order=c(0,1,1), seasonal=list(order=c(1,1,0),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod4=arima(lnserie.lin,order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
 abs(mod4$coef/sqrt(diag(mod4$var.coef)))
 ```
 
-It can be seen that the calendar effect terms are not significant,so these are dropped and the model work without them over the new linearized data.
-
+## Calendar Effects
+In the below graphics, the calendar effects are plotted. It can be clearly seen that some months were indeed affected by this phenomena. The years showing calendar effect peaks were 2000, 2004, 2007 and 2009. This means that they suffered from unproportioned Trading or Easter days which by taking into account the coefficient from Arima, indeed affected the time series values.
 ```{r}
-(mod4=arima(lnserieEC.lin,order=c(0,1,1), seasonal=list(order=c(1,0,0),period=12)))
-abs(mod4$coef/sqrt(diag(mod4$var.coef)))
+EfecTD=coef(mod4)["wTradDays"]*wTradDays
+EfecSS=coef(mod4)["wEast"]*wEast
+lnserieEC.lin=lnserie.lin-EfecTD-EfecSS
+plot(lnserie-lnserieEC.lin)
 ```
-
 
 ### Analysis of Residuals
 
@@ -711,16 +687,16 @@ It can be observed that the MA inverse roots lie inside the unit circle. This ma
 ```{r}
 ultim=c(2018,12)
 pdq=c(0,1,1)
-PDQ=c(1,1,0)
+PDQ=c(0,1,1)
 
 serie1=window(serie.lin,end=ultim+c(1,0))
 lnserie1=log(serie1)
 serie2=window(serie.lin,end=ultim)
 lnserie2=log(serie2)
 
-(mod41=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12)))
+(mod41=arima(lnserie1,order=pdq,seasonal=list(order=PDQ,period=12),xreg=data.frame(wTradDays,wEast)))
 
-(mod42=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12)))
+(mod42=arima(lnserie2,order=pdq,seasonal=list(order=PDQ,period=12),xreg=data.frame(wTradDays2,wEast2)))
 ```
 
 The model stability is fulfilled. We observe similar results in terms of significance, sign and magnitude. In practice, this means that the correlation structure has not changed in the last year, and that the use of the complete series for making predictions is reliable.
@@ -730,7 +706,7 @@ The model stability is fulfilled. We observe similar results in terms of signifi
 We use the subset series lnserie2 to predict 2019 data
 
 ```{r}
-pred=predict(mod42,n.ahead=12)
+pred=predict(mod42,n.ahead=12,newxreg=window(cbind(wTradDays,wEast)))
 pr<-ts(c(tail(lnserie2,1),pred$pred),start=ultim,freq=12)
 
 se<-ts(c(0,pred$se),start=ultim,freq=12)
@@ -740,7 +716,7 @@ tl<-ts(exp(pr-1.96*se),start=ultim,freq=12)
 tu<-ts(exp(pr+1.96*se),start=ultim,freq=12)
 pr<-ts(exp(pr),start=ultim,freq=12)
 
-ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(0,1,1)(1,1,0)12+Outliers+CalendarEffects")
+ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,+2),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers+CalendarEffects")
 abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
 
 #Tabulate values of: point and interval predictions, observations and prediction-errors.
@@ -775,41 +751,9 @@ results=data.frame(
   meanLength=c(mCI2,mCI3,mCI4)
   )
 
-row.names(results)=c("ARIMA(0,1,1)(1,1,0)12", "ARIMA(2,1,0)(1,1,0)12+Outliers+CalendarEffects",  "ARIMA(0,1,1)(1,1,0)12+Outliers+CalendarEffects")
+row.names(results)=c("ARIMA(0,1,1)(1,1,0)12", "ARIMA(2,1,0)(0,1,1)12+Outliers+CalendarEffects",  "ARIMA(0,1,1)(0,1,1)12+Outliers+CalendarEffects")
 results
 ```
 
-From the results, it can be seen that model 4 is now the best model, despite its prediction capability is slightly worse than the one of model 3, model 4 is simpler because it only has two parameters, so it is the most parsimonious model of these.
-
-
-## Final Prediction
-
-## Perform long term predictions with the best model (mod4)
-
-Predict values for 2020 based on the complete series lnserie1 (from 1990-2019).
-
-```{r}
-pred=predict(mod42,n.ahead=12)
-pr<-ts(c(tail(lnserie,1),pred$pred),start=ultim+c(1,0),freq=12)
-se<-ts(c(0,pred$se),start=ultim+c(1,0),freq=12)
-
-#Intervals
-tl2<-ts(exp(pr-1.96*se),start=ultim+c(1,0),freq=12)
-tu2<-ts(exp(pr+1.96*se),start=ultim+c(1,0),freq=12)
-pr2<-ts(exp(pr),start=ultim+c(1,0),freq=12)
-
-ts.plot(serie,tl1,tu1,pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(ultim[1]-2,ultim[1]+3),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+Outliers")
-abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
-
-(previs2=window(cbind(tl2,pr2,tu2),start=ultim+c(1,0)))
-```
-
-
-```{r}
-ts.plot(serie,tl1,tu1,pr1,tl2,tu2,pr2,lty=c(1,2,2,1,2,2,1),col=c(1,4,4,2,3,3,6),xlim=ultim[1]+c(1,3),type="o",main="Metro Final Prediction")
-legend("topleft",c("ARIMA(0,1,1)(1,1,0)12","ARIMA(0,1,1)(1,1,0)12+CE+Out"),col=c(2,6),lty=1,lwd=2)
-abline(v=ultim[1]+1:3,lty=3,col=4)
-
-cbind(previs1,previs2)
-```
+From the results, it can be seen that model 2 is still the best model, it has a better prediction capability, because focusing on the error metric, it has less predictive error, despite the models done over the treated data having a much smaller AIC, because its accuracy is significantly worsen.
 
