@@ -11,7 +11,7 @@
 
 <meta name="author" content="Gabriel Zarate &amp; Antonio Pariente" />
 
-<meta name="date" content="2024-01-10" />
+<meta name="date" content="2024-01-11" />
 
 <title>ASM - Project TS</title>
 
@@ -352,7 +352,7 @@ display: none;
 
 <h1 class="title toc-ignore">ASM - Project TS</h1>
 <h4 class="author">Gabriel Zarate &amp; Antonio Pariente</h4>
-<h4 class="date">2024-01-10</h4>
+<h4 class="date">2024-01-11</h4>
 
 </div>
 
@@ -602,14 +602,14 @@ decision to drop the intercept</li>
 <ul>
 <li>mod1: <span class="math inline">\(ARIMA(2,1,0)(1,1,0)_{12}\)</span>
 fitted with the original log-transformed series, which in its explicit
-statistical expression is <span class="math inline">\((1 - B)^1(1 -
-B^{12})^1 Y_t = (1 - 0.7024B - 0.3327B^2)(1 - 0.4268B^{12})
-a_t\)</span>, and has an AIC of -867.91</li>
+statistical expression is <span class="math inline">\((1 - B)(1 -
+B^{12})(1 + 0.7024B + 0.3327B^2) log(X_t) = (1 - 0.4268B^{12})
+Z_t\)</span>, and has an AIC of -867.91</li>
 <li>mod2: <span class="math inline">\(ARIMA(0,1,1)(1,1,0)_{12}\)</span>
 fitted with the original log-transformed series, which in its explicit
 statistical expression is <span class="math inline">\((1 - B)^1(1 -
-B^{12})^1 Y_t = (1 + 0.6626B)(1 + 0.4293B^{12}) a_t\)</span>, and has an
-AIC of -865.81</li>
+B^{12})^1 log(X_t) = (1 - 0.6626B)(1 - 0.4293B^{12}) Z_t\)</span>, and
+has an AIC of -865.81</li>
 </ul>
 </div>
 </div>
